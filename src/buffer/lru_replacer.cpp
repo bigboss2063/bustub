@@ -1,4 +1,3 @@
-
 //===----------------------------------------------------------------------===//
 //
 //                         BusTub
@@ -57,9 +56,9 @@ void LRUReplacer::Pin(frame_id_t frame_id) {
  */
 void LRUReplacer::Unpin(frame_id_t frame_id) {
   mutex_.lock();
-  bool found = (std::find(frame_id_list_.begin(), frame_id_list_.end(), frame_id) != frame_id_list_.end());
-  if (!found) {
-    frame_id_list_.push_back(frame_id);
+  // bool found = (std::find(frame_id_list_.begin(), frame_id_list_.end(), frame_id) != frame_id_list_.end());
+  if (location_map_.count(frame_id) == 0) {
+    frame_id_list_.emplace_back(frame_id);
     location_map_[frame_id] = std::prev(frame_id_list_.end());
   }
   mutex_.unlock();

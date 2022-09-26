@@ -50,10 +50,12 @@ BufferPoolManagerInstance::~BufferPoolManagerInstance() {
 bool BufferPoolManagerInstance::FlushPgImp(page_id_t page_id) {
   // Make sure you call DiskManager::WritePage!
   std::lock_guard<std::mutex> guard(latch_);
-  if (page_table_.find(page_id) == page_table_.end()) {
+  // 只有一种情况返回 false 就是该页不在内存中
+  if (page_table_.count(page_id) == 0) {
     return false;
   }
   Page *page = &pages_[page_table_[page_id]];
+  // 方法注释中并没有说明只有脏页才会写回，所以要全部都写入磁盘中
   disk_manager_->WritePage(page_id, page->GetData());
   page->is_dirty_ = false;
   return true;
@@ -61,10 +63,12 @@ bool BufferPoolManagerInstance::FlushPgImp(page_id_t page_id) {
 
 void BufferPoolManagerInstance::FlushAllPgsImp() {
   // You can do it!
-  for (Page *page = pages_; page != pages_ + pool_size_; page++) {
-    if (page->page_id_ != INVALID_PAGE_ID) {
-      FlushPgImp(page->page_id_);
-    }
+  std::lock_guard<std::mutex> lock(latch_);
+  Page *page;
+  for (size_t i = 0; i < pool_size_; i++) {
+    page = &pages_[i];
+    disk_manager_->WritePage(page->page_id_, page->data_);
+    page->is_dirty_ = false;
   }
 }
 
@@ -75,15 +79,8 @@ Page *BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) {
   // 3.   Update P's metadata, zero out memory and add P to the page table.
   // 4.   Set the page ID output parameter. Return a pointer to P.
   std::lock_guard<std::mutex> guard(latch_);
-  // 如果空闲队列是空的，并且 buffer pool 中的页都是 pinned 状态，那么不能创建新页
-  bool all_pinned = true;
-  for (frame_id_t i = 0; i < static_cast<frame_id_t>(pool_size_); ++i) {
-    if (pages_[i].pin_count_ == 0) {
-      all_pinned = false;
-      break;
-    }
-  }
-  if (all_pinned) {
+  // 不需要循环遍历每个page是否是 pinned 状态，如果缓存池没满，那么其中所有页都是 pinned 状态也无所谓，用空闲状态的帧就行了
+  if (free_list_.empty() && replacer_->Size() == 0) {
     return nullptr;
   }
   // 分配一个页 id
@@ -106,11 +103,14 @@ Page *BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) {
   }
   page_table_.erase(page->page_id_);
   // 重置元数据
-  page->ResetMemory();  // 不能使用这个重置data？
+  page->ResetMemory();
   page->page_id_ = *page_id;
-  page->pin_count_++;
+  // 创建完新页之后马上写入磁盘中，防止页号丢失
+  disk_manager_->WritePage(page->GetPageId(), page->GetData());
+  page->pin_count_ = 1;
   replacer_->Pin(frame_id);
-  page_table_[*page_id] = frame_id;
+  // insert 对于不存在的元素效率更高
+  page_table_.insert(std::pair<page_id_t, frame_id_t>(*page_id, frame_id));
   return page;
 }
 
@@ -123,6 +123,7 @@ Page *BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) {
   // 3.     Delete R from the page table and insert P.
   // 4.     Update P's metadata, read in the page content from disk, and then return a pointer to P.
   std::lock_guard<std::mutex> guard(latch_);
+  // 先检查页表中是否有这一页，不要先检查能不能拉取新的页
   if (page_table_.count(page_id) != 0) {
     frame_id_t frame_id = page_table_[page_id];
     replacer_->Pin(frame_id);
@@ -130,14 +131,7 @@ Page *BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) {
     page->pin_count_++;
     return page;
   }
-  bool all_pinned = true;
-  for (frame_id_t i = 0; i < static_cast<frame_id_t>(pool_size_); ++i) {
-    if (pages_[i].pin_count_ == 0) {
-      all_pinned = false;
-      break;
-    }
-  }
-  if (all_pinned) {
+  if (free_list_.empty() && replacer_->Size() == 0) {
     return nullptr;
   }
   frame_id_t frame_id;
@@ -153,7 +147,7 @@ Page *BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) {
     page->is_dirty_ = false;
   }
   page->ResetMemory();
-  page_table_[page_id] = frame_id;
+  page_table_.insert(std::pair<page_id_t, frame_id_t>(page_id, frame_id));
   page_table_.erase(page->page_id_);
   page->page_id_ = page_id;
   disk_manager_->ReadPage(page_id, page->GetData());
@@ -169,7 +163,7 @@ bool BufferPoolManagerInstance::DeletePgImp(page_id_t page_id) {
   // 2.   If P exists, but has a non-zero pin-count, return false. Someone is using the page.
   // 3.   Otherwise, P can be deleted. Remove P from the page table, reset its metadata and return it to the free list.
   std::lock_guard<std::mutex> guard(latch_);
-  if (page_table_.find(page_id) == page_table_.end()) {
+  if (page_table_.count(page_id) == 0) {
     return true;
   }
   frame_id_t frame_id = page_table_[page_id];
@@ -193,6 +187,7 @@ bool BufferPoolManagerInstance::UnpinPgImp(page_id_t page_id, bool is_dirty) {
   }
   frame_id_t frame_id = page_table_[page_id];
   Page *page = &pages_[frame_id];
+  // 一定不能直接把 is_dirty_ 赋值，如果参数是 false，那就会把需要写入磁盘的脏页中的数据丢掉
   if (is_dirty) {
     page->is_dirty_ = is_dirty;
   }

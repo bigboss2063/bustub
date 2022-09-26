@@ -89,7 +89,7 @@ class ParallelBufferPoolManager : public BufferPoolManager {
    */
   void FlushAllPgsImp() override;
 
-  std::unordered_map<uint32_t, BufferPoolManagerInstance *> buffer_pool_manager_instances_;
+  BufferPoolManagerInstance **buffer_pool_manager_instances_;
 
   size_t num_instances_;
 
