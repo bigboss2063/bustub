@@ -13,9 +13,11 @@
 #pragma once
 
 #include "buffer/buffer_pool_manager.h"
+#include "buffer/buffer_pool_manager_instance.h"
 #include "recovery/log_manager.h"
 #include "storage/disk/disk_manager.h"
 #include "storage/page/page.h"
+#include "unordered_map"
 
 namespace bustub {
 
@@ -86,5 +88,15 @@ class ParallelBufferPoolManager : public BufferPoolManager {
    * Flushes all the pages in the buffer pool to disk.
    */
   void FlushAllPgsImp() override;
+
+  std::unordered_map<uint32_t, BufferPoolManagerInstance *> buffer_pool_manager_instances_;
+
+  size_t num_instances_;
+
+  size_t next_index_;
+
+  size_t pool_size_;
+
+  std::mutex latch_;
 };
 }  // namespace bustub
