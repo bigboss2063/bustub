@@ -34,6 +34,9 @@ namespace bustub {
  *  readable_ arrays. More information is in storage/page/hash_table_page_defs.h.
  *
  */
+
+constexpr uint8_t CHAR_BIT_SIZE = 8 * sizeof(char);
+
 template <typename KeyType, typename ValueType, typename KeyComparator>
 class HashTableBucketPage {
  public:
