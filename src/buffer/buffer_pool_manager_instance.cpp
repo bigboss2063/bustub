@@ -79,7 +79,8 @@ Page *BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) {
   // 3.   Update P's metadata, zero out memory and add P to the page table.
   // 4.   Set the page ID output parameter. Return a pointer to P.
   std::lock_guard<std::mutex> guard(latch_);
-  // 不需要循环遍历每个page是否是 pinned 状态，如果缓存池没满，那么其中所有页都是 pinned 状态也无所谓，用空闲状态的帧就行了
+  // 不需要循环遍历每个page是否是 pinned 状态，如果缓存池没满，那么其中所有页都是 pinned
+  // 状态也无所谓，用空闲状态的帧就行了
   if (free_list_.empty() && replacer_->Size() == 0) {
     return nullptr;
   }

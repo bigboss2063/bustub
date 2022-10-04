@@ -45,13 +45,22 @@ void HashTableDirectoryPage::IncrGlobalDepth() {
   int last_end = 1 << global_depth_;
   int new_end = last_end;
   for (int begin = 0; begin < last_end; begin++, new_end++) {
-    local_depths_[begin] = local_depths_[new_end];
-    bucket_page_ids_[begin] = bucket_page_ids_[new_end];
+    local_depths_[new_end] = local_depths_[begin];
+    bucket_page_ids_[new_end] = bucket_page_ids_[begin];
   }
   global_depth_++;
 }
 
-void HashTableDirectoryPage::DecrGlobalDepth() { global_depth_--; }
+void HashTableDirectoryPage::DecrGlobalDepth() {
+  for (uint32_t idx = 0; idx < Size(); idx++) {
+    if (local_depths_[idx] == global_depth_) {
+      return;
+    }
+  }
+  if (global_depth_ > 1) {
+    global_depth_--;
+  }
+}
 
 page_id_t HashTableDirectoryPage::GetBucketPageId(uint32_t bucket_idx) { return bucket_page_ids_[bucket_idx]; }
 
@@ -69,9 +78,15 @@ void HashTableDirectoryPage::SetLocalDepth(uint32_t bucket_idx, uint8_t local_de
   local_depths_[bucket_idx] = local_depth;
 }
 
-void HashTableDirectoryPage::IncrLocalDepth(uint32_t bucket_idx) { local_depths_[bucket_idx] += 1; }
+void HashTableDirectoryPage::IncrLocalDepth(uint32_t bucket_idx) {
+  local_depths_[bucket_idx] = local_depths_[bucket_idx] + 1;
+}
 
-void HashTableDirectoryPage::DecrLocalDepth(uint32_t bucket_idx) { local_depths_[bucket_idx] -= 1; }
+void HashTableDirectoryPage::DecrLocalDepth(uint32_t bucket_idx) {
+  if (local_depths_[bucket_idx] > 1) {
+    local_depths_[bucket_idx] = local_depths_[bucket_idx] - 1;
+  }
+}
 
 uint32_t HashTableDirectoryPage::GetLocalHighBit(uint32_t bucket_idx) { return 0; }
 
@@ -102,7 +117,6 @@ void HashTableDirectoryPage::VerifyIntegrity() {
       uint32_t old_ld = page_id_to_ld[curr_page_id];
       LOG_WARN("Verify Integrity: curr_local_depth: %u, old_local_depth %u, for page_id: %u", curr_ld, old_ld,
                curr_page_id);
-      PrintDirectory();
       assert(curr_ld == page_id_to_ld[curr_page_id]);
     } else {
       page_id_to_ld[curr_page_id] = curr_ld;
@@ -120,7 +134,6 @@ void HashTableDirectoryPage::VerifyIntegrity() {
     if (curr_count != required_count) {
       LOG_WARN("Verify Integrity: curr_count: %u, required_count %u, for page_id: %u", curr_ld, required_count,
                curr_page_id);
-      PrintDirectory();
       assert(curr_count == required_count);
     }
     it++;

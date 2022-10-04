@@ -135,10 +135,14 @@ class HashTableBucketPage {
    */
   bool IsEmpty();
 
+  bool IsRepeat(KeyType key, ValueType value, KeyComparator cmp);
+
   /**
    * Prints the bucket's occupancy information
    */
   void PrintBucket();
+
+  void CopyMappingsAndResetPage(std::vector<MappingType> *result);
 
  private:
   //  For more on BUCKET_ARRAY_SIZE see storage/page/hash_table_page_defs.h
