@@ -12,11 +12,15 @@
 
 #pragma once
 
+#include <list>
 #include <memory>
+#include <unordered_map>
 #include <utility>
-
+#include <vector>
 #include "execution/executors/abstract_executor.h"
+#include "execution/expressions/abstract_expression.h"
 #include "execution/plans/distinct_plan.h"
+#include "include/common/util/hash_util.h"
 
 namespace bustub {
 
@@ -45,6 +49,8 @@ class DistinctExecutor : public AbstractExecutor {
    */
   bool Next(Tuple *tuple, RID *rid) override;
 
+  bool IsRepeat(std::vector<Value> values, hash_t hash_key);
+
   /** @return The output schema for the distinct */
   const Schema *GetOutputSchema() override { return plan_->OutputSchema(); };
 
@@ -53,5 +59,9 @@ class DistinctExecutor : public AbstractExecutor {
   const DistinctPlanNode *plan_;
   /** The child executor from which tuples are obtained */
   std::unique_ptr<AbstractExecutor> child_executor_;
+
+  std::unordered_map<hash_t, std::vector<std::vector<Value>>> distinct_map_{};
+
+  std::list<Tuple> result_;
 };
 }  // namespace bustub
