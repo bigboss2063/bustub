@@ -104,6 +104,8 @@ class LockManager {
    */
   bool Unlock(Transaction *txn, const RID &rid);
 
+  bool NeedWait(Transaction *txn, const RID &rid, LockMode lock_mode);
+
  private:
   std::mutex latch_;
 
