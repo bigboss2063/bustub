@@ -25,6 +25,8 @@ void SeqScanExecutor::Init() {
 }
 
 bool SeqScanExecutor::Next(Tuple *tuple, RID *rid) {
+  auto txn = exec_ctx_->GetTransaction();
+  auto lock_manager = exec_ctx_->GetLockManager();
   while (table_iterator_ != table_info_->table_->End() && plan_->GetPredicate() != nullptr &&
          !plan_->GetPredicate()->Evaluate(&(*table_iterator_), plan_->OutputSchema()).GetAs<bool>()) {
     table_iterator_++;
@@ -32,12 +34,23 @@ bool SeqScanExecutor::Next(Tuple *tuple, RID *rid) {
   if (table_iterator_ == table_info_->table_->End()) {
     return false;
   }
+  if (lock_manager != nullptr && txn->GetIsolationLevel() != IsolationLevel::READ_UNCOMMITTED) {
+    if (!txn->IsSharedLocked(table_iterator_->GetRid()) && !txn->IsExclusiveLocked(table_iterator_->GetRid()) &&
+        !lock_manager->LockShared(txn, table_iterator_->GetRid())) {
+      return false;
+    }
+  }
   std::vector<Value> values;
   for (const auto &column : plan_->OutputSchema()->GetColumns()) {
     values.push_back(column.GetExpr()->Evaluate(&(*table_iterator_), &table_info_->schema_));
   }
   *tuple = Tuple(values, plan_->OutputSchema());
   *rid = table_iterator_->GetRid();
+  if (lock_manager != nullptr && txn->GetIsolationLevel() == IsolationLevel::READ_COMMITTED) {
+    if (!lock_manager->Unlock(txn, *rid)) {
+      return false;
+    }
+  }
   table_iterator_++;
   return true;
 }
